@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <title></title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <!-- 新 Bootstrap 核心 CSS 文件 -->
+  <link rel="stylesheet" href="//cdn.bootcss.com/bootstrap/3.3.5/css/bootstrap.min.css">
+  <script src="//cdn.bootcss.com/jquery/1.11.3/jquery.min.js"></script>
+  <!--        <script src="//cdn.bootcss.com/bootstrap/3.3.5/js/bootstrap.min.js"></script>-->
+</head>
+<body>
+<div class="container">
+  <div>内容：</div>
+  <div class="list-group" id="divShow">
+    <!--<div class="list-group-item list-group-item-success">1111</div>
+	<div class="list-group-item list-group-item-info">1111</div>
+	<div class="list-group-item list-group-item-warning">1111</div>
+	<div class="list-group-item list-group-item-danger">1111</div>-->
+  </div>
+  <div class="list-group" id="divUsers">
+    在线：<br/>
+    <!--<div class="btn btn-default">111</div>-->
+
+  </div>
+  <div>
+    昵称：<input class="form-control" id="txtUserName" value="红领巾" type="text" maxlength="20" style="width: 30%; margin-bottom: 15px"/>
+    聊聊：<textarea class="form-control"
+                 id="txtContent"
+                 autofocus
+                 rows="6"
+                 placeholder="想聊的内容"
+                 maxlength="200"
+                 required
+                 style="width: 60%; "></textarea>
+    <button class="btn btn-default" id="btnSend" style="margin-top:15px">发 送</button>
+    <button class="btn btn-default" id="btnMatch" style="margin-top:15px">配 对</button>
+  </div>
+</div>
+</body>
+</html>
+
+<script>
+
+  var tool = function () {
+    var paperLoopNum = 0;
+    var paperTempleArr = ['<div class="list-group-item list-group-item-success">{0}</div>',
+                          '<div class="list-group-item list-group-item-info">{0}</div>',
+                          '<div class="list-group-item list-group-item-warning">{0}</div>',
+                          '<div class="list-group-item list-group-item-danger">{0}</div>'];
+    return {
+      paperDiv: function (val) {
+        var hl = paperTempleArr[paperLoopNum];
+        paperLoopNum++;
+        if(paperLoopNum >= paperTempleArr.length) {
+          paperLoopNum = 0;
+        }
+        return this.formart(hl, [val])
+      },
+      formart: function (str, arrVal) {
+        for(var i = 0; i < arrVal.length; i++) {
+          str = str.replace("{" + i + "}", arrVal[i]);
+        }
+        return str;
+      }
+    }
+  }
+
+  function showMsg(id, hl, isAppend) {
+    if(!isAppend) {
+      $("#" + id).html(hl);
+    } else {
+      $("#" + id).append(hl);
+    }
+  }
+
+  $(function () {
+    var token = "";
+    var partner = "";
+    var state = "idle";
+    //初始化工具方法
+    var tl = new tool();
+    //http->ws https->wss
+    var wsUrl = window.location.href.replace("http","ws") + "ws";
+    var ws = new WebSocket(wsUrl);
+    try {
+      ws.onopen = function () {
+        showMsg("divShow", tl.paperDiv("连接服务器-成功"));
+      }
+      ws.onclose = function () {
+        if(ws) {
+          ws.close();
+          ws = null;
+        }
+        showMsg("divShow", tl.paperDiv("连接服务器-关闭"), true);
+      }
+      ws.onmessage = function (result) {
+        var msg = JSON.parse(result.data);
+        console.log("receive msg",msg)
+        if(msg.type === "chat"){
+          showMsg("divShow", tl.paperDiv("【" + msg.userName + "】：" + msg.content), true);
+          var userDataShow = [];
+          userDataShow.push('<div class="btn btn-default">' + msg.userName + '</div>');
+          showMsg("divUsers", userDataShow.join(''), false);
+        }else if(msg.type === "token") {
+          token=msg.token;
+        }else if(msg.type === "matched") {
+          state="matched";
+          partner=msg.content;
+          showMsg("divShow", tl.paperDiv("配对成功"), true);
+        }else if(msg.type === "close") {
+          state="idle";
+          partner="";
+          showMsg("divShow", tl.paperDiv("已断开。。。"), true);
+        }
+
+      }
+      ws.onerror = function () {
+        if(ws) {
+          ws.close();
+          ws = null;
+        }
+        showMsg("divShow", tl.paperDiv("连接服务器-关闭"), true);
+      }
+    } catch(e) {
+      alert(e.message);
+    }
+    $("#btnSend").on("click", function () {
+      var tContentObj = $("#txtContent");
+      var tContent = $.trim(tContentObj.val()).replace("/[\n]/g", "");
+      var tUserName = $.trim($("#txtUserName").val());
+      tUserName = tUserName.length <= 0 ? "匿名" : tUserName;
+      if(state !== "matched") {
+        alert("请先配对!");
+        return;
+      }
+      if(tContent.length <= 0 || $.trim(tContent).length <= 0) {
+        alert("请输入发送内容!");
+        return;
+      }
+      if(ws == null) {
+        alert("连接失败，请F5刷新页面!");
+        return;
+      }
+      var request = tl.formart('{"userName": "{0}", "type": "{1}", "content": "{2}","token": "{3}","receiver": "{4}" }', [tUserName, "chat", tContent, token,partner]);
+      console.log("send msg：", request);
+      ws.send(request);
+      tContentObj.val("");
+      tContentObj.val($.trim(tContentObj.val()).replace("/[\n]/g", ""));
+    });
+    $("#btnMatch").on("click", function () {
+      var request = tl.formart('{"type": "{0}", "token": "{1}" }', ["match", token]);
+      console.log("send msg：", request);
+      ws.send(request);
+      showMsg("divShow", tl.paperDiv("配对中..."), true);
+    });
+    $("#txtContent").on("keydown", function (event) {
+      if(event.keyCode === 13) {
+        $("#btnSend").trigger("click");
+      }
+    });
+  })
+
+</script>
