@@ -15,12 +15,8 @@
 </head>
 <body>
 <div class="container">
-  <div>欢迎加入随机聊天，点击配对开始吧！</div>
-  <div class="list-group" id="divShow">
-    <!--<div class="list-group-item list-group-item-success">1111</div>
-	<div class="list-group-item list-group-item-info">1111</div>
-	<div class="list-group-item list-group-item-warning">1111</div>
-	<div class="list-group-item list-group-item-danger">1111</div>-->
+  <div>欢迎加入匿名聊天室，畅所欲言吧！</div>
+  <div class="list-group" id="divShow" style="height:300px;overflow:auto;background:#EEEEEE;">
   </div>
   <div class="list-group" id="divUsers">
     <div class="btn btn-default">当前在线人数：0</div>
@@ -36,7 +32,6 @@
                  required
                  style="width: 100%; "></textarea>
     <button class="btn btn-default" id="btnSend" style="margin-top:15px">发 送</button>
-    <button class="btn btn-default" id="btnMatch" style="margin-top:15px">配 对</button>
     <button class="btn btn-default" id="btnLeave" style="margin-top:15px">离 开</button>
   </div>
 </div>
@@ -69,16 +64,17 @@
     } else {
       $("#" + id).append(hl);
     }
+    var divShow = document.getElementById("divShow");
+    divShow.scrollTop=divShow.scrollHeight;
   }
 
   $(function () {
     var userId = "";
-    var partner = "";
     var state = "idle";
     //初始化工具方法
     var tl = new tool();
     //http->ws https->wss
-    var wsUrl = window.location.href.replace("http","ws") + "ws";
+    var wsUrl = window.location.href.replace("http", "ws").replace("?id=","/");
     var ws = new WebSocket(wsUrl);
     try {
       ws.onopen = function () {
@@ -96,25 +92,19 @@
         console.log("receive msg",msg)
         if(msg.type === "chat"){
           showMsg("divShow", tl.paperDiv("【" + msg.userName + "】：" + msg.content,userId===msg.userId), true);
-          var userDataShow = [];
-          userDataShow.push('<div class="btn btn-default">' + msg.userName + '</div>');
-          showMsg("divUsers", userDataShow.join(''), false);
         }else if(msg.type === "token") {
           userId=msg.content;
         }else if(msg.type === "join") {
           var userDataShow = [];
           userDataShow.push('<div class="btn btn-default">当前在线人数：' + msg.content + '</div>');
           showMsg("divUsers", userDataShow.join(''), false);
-        }else if(msg.type === "matched") {
-          state="matched";
-          partner=msg.content;
-          showMsg("divShow", tl.paperDiv("配对成功，打个招呼吧"), true);
+          showMsg("divShow", tl.paperDiv("有人进来了，欢迎欢迎"), true);
         }else if(msg.type === "leave") {
-          state="idle";
-          partner="";
-          showMsg("divShow", tl.paperDiv("对方已离开，重新配对吧。。。"), true);
+          var userDataShow = [];
+          userDataShow.push('<div class="btn btn-default">当前在线人数：' + msg.content + '</div>');
+          showMsg("divUsers", userDataShow.join(''), false);
+          showMsg("divShow", tl.paperDiv("有人离开了。。。"), true);
         }
-
       }
       ws.onerror = function () {
         if(ws) {
@@ -131,10 +121,6 @@
       var tContent = $.trim(tContentObj.val()).replace("/[\n]/g", "");
       var tUserName = $.trim($("#txtUserName").val());
       tUserName = tUserName.length <= 0 ? "匿名" : tUserName;
-      if(state !== "matched") {
-        alert("请先配对!");
-        return;
-      }
       if(tContent.length <= 0 || $.trim(tContent).length <= 0) {
         alert("请输入发送内容!");
         return;
@@ -143,37 +129,23 @@
         alert("连接失败，请F5刷新页面!");
         return;
       }
-      var request = tl.formart('{"userName": "{0}", "type": "{1}", "content": "{2}","userId": "{3}","receiver": "{4}" }', [tUserName, "chat", tContent, userId,partner]);
+      var request = tl.formart('{"userName": "{0}", "type": "{1}", "content": "{2}","userId": "{3}"}', [tUserName, "chat", tContent, userId]);
       console.log("send msg：", request);
       ws.send(request);
       tContentObj.val("");
       tContentObj.val($.trim(tContentObj.val()).replace("/[\n]/g", ""));
     });
-    $("#btnMatch").on("click", function () {
-      if(state === "matching") {
-        alert("配对中，请稍等!");
-        return;
-      }
-      if(state === "matched") {
-        alert("聊天中，如想重新配对，请点击离开按钮!");
-        return;
-      }
-      state = "matching";
-      var request = tl.formart('{"type": "{0}", "userId": "{1}" }', ["match", userId]);
-      console.log("send msg：", request);
-      ws.send(request);
-      showMsg("divShow", tl.paperDiv("配对中..."), true);
-    });
     $("#btnLeave").on("click", function () {
-      if(state !== "matched") {
-        alert("非聊天中!");
+      if(state === "leaved") {
+        alert("已离开，刷新页面重新加入聊天室吧!");
         return;
       }
-      state = "idle";
-      var request = tl.formart('{"type": "{0}", "userId": "{1}","receiver": "{2}" }', ["leave", userId, partner]);
+      state = "leaved";
+      var request = tl.formart('{"type": "{0}", "userId": "{1}" }', ["leave", userId]);
       console.log("send msg：", request);
       ws.send(request);
-      showMsg("divShow", tl.paperDiv("已离开，重新配对吧..."), true);
+      showMsg("divShow", tl.paperDiv("已离开聊天室..."), true);
+      ws.close();
     });
     $("#txtContent").on("keydown", function (event) {
       if(event.keyCode === 13) {

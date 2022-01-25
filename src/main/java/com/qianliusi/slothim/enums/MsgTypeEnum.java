@@ -8,7 +8,8 @@ public enum MsgTypeEnum implements EnumService<String> {
     match("match", "match消息"),
     matched("matched", "matched消息"),
     chat("chat", "chat消息"),
-    close("close", "close消息"),
+    join("join", "join消息"),
+    leave("leave", "leave消息"),
     ;
 
     private final String code;
