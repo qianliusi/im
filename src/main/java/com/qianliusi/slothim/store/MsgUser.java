@@ -10,7 +10,7 @@ import io.vertx.core.shareddata.impl.ClusterSerializable;
 
 public class MsgUser implements ClusterSerializable, Shareable {
 
-	private String token;
+	private String id;
 	private String state;//idle,matching,matched
 	private String partner;
 
@@ -21,23 +21,23 @@ public class MsgUser implements ClusterSerializable, Shareable {
 		this.state = state;
 	}
 
-	public MsgUser(String token, String state) {
-		this.token = token;
+	public MsgUser(String id, String state) {
+		this.id = id;
 		this.state = state;
 	}
 
-	public MsgUser(String token, String state, String partner) {
-		this.token = token;
+	public MsgUser(String id, String state, String partner) {
+		this.id = id;
 		this.state = state;
 		this.partner = partner;
 	}
 
-	public String getToken() {
-		return token;
+	public String getId() {
+		return id;
 	}
 
-	public void setToken(String token) {
-		this.token = token;
+	public void setId(String id) {
+		this.id = id;
 	}
 
 	public String getState() {
@@ -58,7 +58,7 @@ public class MsgUser implements ClusterSerializable, Shareable {
 
 	@Override
 	public String toString() {
-		return "MsgUser{" + "token='" + token + '\'' + ", state='" + state + '\'' + ", partner='" + partner + '\'' + '}';
+		return "MsgUser{" + "id='" + id + '\'' + ", state='" + state + '\'' + ", partner='" + partner + '\'' + '}';
 	}
 
 	@Override

@@ -74,7 +74,7 @@
   }
 
   $(function () {
-    var token = "";
+    var userId = "";
     var partner = "";
     var state = "idle";
     //初始化工具方法
@@ -102,15 +102,15 @@
           userDataShow.push('<div class="btn btn-default">' + msg.userName + '</div>');
           showMsg("divUsers", userDataShow.join(''), false);
         }else if(msg.type === "token") {
-          token=msg.token;
+          userId=msg.content;
         }else if(msg.type === "matched") {
           state="matched";
           partner=msg.content;
-          showMsg("divShow", tl.paperDiv("配对成功"), true);
+          showMsg("divShow", tl.paperDiv("配对成功，打个招呼吧"), true);
         }else if(msg.type === "close") {
           state="idle";
           partner="";
-          showMsg("divShow", tl.paperDiv("已断开。。。"), true);
+          showMsg("divShow", tl.paperDiv("对方已离开。。。"), true);
         }
 
       }
@@ -141,14 +141,14 @@
         alert("连接失败，请F5刷新页面!");
         return;
       }
-      var request = tl.formart('{"userName": "{0}", "type": "{1}", "content": "{2}","token": "{3}","receiver": "{4}" }', [tUserName, "chat", tContent, token,partner]);
+      var request = tl.formart('{"userName": "{0}", "type": "{1}", "content": "{2}","userId": "{3}","receiver": "{4}" }', [tUserName, "chat", tContent, userId,partner]);
       console.log("send msg：", request);
       ws.send(request);
       tContentObj.val("");
       tContentObj.val($.trim(tContentObj.val()).replace("/[\n]/g", ""));
     });
     $("#btnMatch").on("click", function () {
-      var request = tl.formart('{"type": "{0}", "token": "{1}" }', ["match", token]);
+      var request = tl.formart('{"type": "{0}", "userId": "{1}" }', ["match", userId]);
       console.log("send msg：", request);
       ws.send(request);
       showMsg("divShow", tl.paperDiv("配对中..."), true);

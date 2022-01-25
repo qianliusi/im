@@ -3,7 +3,7 @@ package com.qianliusi.slothim.message;
 import java.io.Serializable;
 
 public class MsgMessage implements Serializable {
-	private String token;
+	private String userId;
 	private String userName;
 	private String type;
 	private String content;
@@ -12,21 +12,21 @@ public class MsgMessage implements Serializable {
 	public MsgMessage() {
 	}
 
-	public MsgMessage(String type, String token) {
+	public MsgMessage(String type, String content) {
 		this.type = type;
-		this.token = token;
+		this.content = content;
 	}
 
 	public MsgMessage(String type) {
 		this.type = type;
 	}
 
-	public String getToken() {
-		return token;
+	public String getUserId() {
+		return userId;
 	}
 
-	public void setToken(String token) {
-		this.token = token;
+	public void setUserId(String userId) {
+		this.userId = userId;
 	}
 
 	public String getUserName() {
@@ -63,6 +63,6 @@ public class MsgMessage implements Serializable {
 
 	@Override
 	public String toString() {
-		return "MsgMessage{" + "token='" + token + '\'' + ", userName='" + userName + '\'' + ", type='" + type + '\'' + ", content='" + content + '\'' + ", receiver='" + receiver + '\'' + '}';
+		return "MsgMessage{" + "userId='" + userId + '\'' + ", userName='" + userName + '\'' + ", type='" + type + '\'' + ", content='" + content + '\'' + ", receiver='" + receiver + '\'' + '}';
 	}
 }

@@ -1,7 +1,5 @@
 package com.qianliusi.slothim;
 
-import cn.hutool.core.bean.BeanUtil;
-import cn.hutool.core.bean.copier.CopyOptions;
 import com.alibaba.fastjson.JSON;
 import com.qianliusi.slothim.enums.MsgTypeEnum;
 import com.qianliusi.slothim.enums.UserStateEnum;
@@ -19,16 +17,11 @@ import io.vertx.ext.web.handler.StaticHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import java.util.function.Consumer;
-import java.util.function.Predicate;
 
 public class HttpService extends AbstractVerticle {
 	private static Logger logger = LoggerFactory.getLogger(HttpService.class);
-	private Map<ServerWebSocket, String> socketUserMap = new HashMap<>();
+//	private Map<ServerWebSocket, String> socketUserMap = new HashMap<>();
 	@Override
 	public void start() {
 		HttpServer server = vertx.createHttpServer();
@@ -45,14 +38,19 @@ public class HttpService extends AbstractVerticle {
 	}
 
 	public void webSocketHandler(ServerWebSocket webSocket) {
-		logger.info("webSocket Connected！");
 		// 接收客户端连接
 		if (!webSocket.path().equals("/ws")) {
 			logger.info("websocket路径["+webSocket.path()+"]非法！拒绝连接！");
 			webSocket.reject();
 		}
 		//保存在线用户
-		Promise<MessageConsumer<Buffer>> promiseConsumer = putUser(webSocket);
+		String userId = UUID.randomUUID().toString();
+		logger.info("webSocket Connected！[{}]",userId);
+		putUser(userId).future().onComplete(event -> {
+			MsgMessage tokenMsg = new MsgMessage(MsgTypeEnum.token.code(), userId);
+			webSocket.writeTextMessage(JSON.toJSONString(tokenMsg));
+		});
+		MessageConsumer<Buffer> consumer = eventBusConsumer(webSocket,userId);
 		// websocket接收到消息就会调用此方法
 		webSocket.handler(buffer->{
 			MsgMessage msg = JSON.parseObject(buffer.getBytes(), MsgMessage.class);
@@ -60,7 +58,7 @@ public class HttpService extends AbstractVerticle {
 			MsgTypeEnum msgTypeEnum = MsgTypeEnum.valueOf(msg.getType());
 			switch(msgTypeEnum) {
 				case match:
-					Promise<String> matchUser = matchUser(webSocket);
+					Promise<String> matchUser = matchUser(userId);
 					matchUser.future().onSuccess(token -> {
 						MsgMessage matchedMsg = new MsgMessage(MsgTypeEnum.matched.code());
 						matchedMsg.setContent(token);
@@ -72,31 +70,27 @@ public class HttpService extends AbstractVerticle {
 					vertx.eventBus().send(msg.getReceiver(), buffer);
 					break;
 				case close:
-					updateUserState(webSocket, UserStateEnum.idle);
+					updateUserState(userId, UserStateEnum.idle);
 					MsgMessage closeMsg = new MsgMessage(MsgTypeEnum.close.code());
 					vertx.eventBus().send(msg.getReceiver(), Buffer.buffer(JSON.toJSONBytes(closeMsg)));
 					break;
-
 			}
-
 		});
 		// 当连接关闭后就会调用此方法
 		webSocket.closeHandler(event -> {
-			closeConnection(webSocket);
-			promiseConsumer.future().onSuccess(MessageConsumer::unregister);
+			closeConnection(userId);
+			consumer.unregister();
 		});
 		// WebSocket异常处理器
 		webSocket.exceptionHandler(e->{
 			logger.error("WebSocket服务异常", e);
-
 		});
 	}
-	private Promise<String> matchUser(ServerWebSocket socket) {
+	private Promise<String> matchUser(String userToken) {
 		Promise<String> promise = Promise.promise();
-		updateUserState(socket, UserStateEnum.matching);
-		String token = socketUserMap.get(socket);
+		updateUserState(userToken, UserStateEnum.matching);
 		vertx.setPeriodic(1000, id -> {
-			Promise<String> matchedUser = doMatchUser(token);
+			Promise<String> matchedUser = doMatchUser(userToken);
 			matchedUser.future().onSuccess(t->{
 				promise.complete(t);
 				vertx.cancelTimer(id);
@@ -105,37 +99,25 @@ public class HttpService extends AbstractVerticle {
 		return promise;
 	}
 
-	private Promise<Void> updateUserState(ServerWebSocket socket, UserStateEnum state) {
-		String token = socketUserMap.get(socket);
+	private Promise<Void> updateUserState(String userId, UserStateEnum state) {
 		Promise<Void> promise = Promise.promise();
 		Future<AsyncMap<String, MsgUser>> onlineUser = getOnlineUser();
-		onlineUser.onSuccess(a -> a.get(token).onSuccess(u -> {
+		onlineUser.onSuccess(a -> a.get(userId).onSuccess(u -> {
 			u.setState(state.code());
-		}));
-		onlineUser.onSuccess(a -> a.get(token).onSuccess(u -> {
-			u.setState(state.code());
-			a.put(token, u);
+			a.put(userId, u, event -> promise.complete(event.result()));
 		}));
 		return promise;
 	}
 
-	private Promise<MessageConsumer<Buffer>> putUser(ServerWebSocket webSocket) {
-		String token = UUID.randomUUID().toString();
-		MsgMessage tokenMsg = new MsgMessage(MsgTypeEnum.token.code(), token);
-		webSocket.writeTextMessage(JSON.toJSONString(tokenMsg));
-		Promise<MessageConsumer<Buffer>> promise = Promise.promise();
+	private Promise<Void> putUser(String userId) {
+		Promise<Void> promise = Promise.promise();
 		Future<AsyncMap<String, MsgUser>> onlineUser = getOnlineUser();
-		onlineUser.onSuccess(a -> {
-			a.put(token, new MsgUser(token, UserStateEnum.idle.code()));
-			socketUserMap.put(webSocket, token);
-			MessageConsumer<Buffer> consumer = eventBusConsumer(webSocket, token);
-			promise.complete(consumer);
-		});
+		onlineUser.onSuccess(a -> a.put(userId, new MsgUser(userId, UserStateEnum.idle.code()), event -> promise.complete()));
 		return promise;
 	}
 
 	private boolean validMatch(MsgUser u,String token) {
-		return !u.getToken().equals(token) && UserStateEnum.matching.code().equals(u.getState());
+		return !u.getId().equals(token) && UserStateEnum.matching.code().equals(u.getState());
 	}
 
 	private Promise<String> doMatchUser(String token) {
@@ -156,12 +138,12 @@ public class HttpService extends AbstractVerticle {
 							promise.fail("无配对中用户");
 						}else {
 							matchingUser.setState(UserStateEnum.matched.code());
-							matchingUser.setPartner(matchedUser.getToken());
-							asyncMap.put(matchingUser.getToken(), matchingUser);
+							matchingUser.setPartner(matchedUser.getId());
+							asyncMap.put(matchingUser.getId(), matchingUser);
 							matchedUser.setState(UserStateEnum.matched.code());
-							matchedUser.setPartner(matchingUser.getToken());
-							asyncMap.put(matchedUser.getToken(), matchedUser);
-							promise.complete(matchedUser.getToken());
+							matchedUser.setPartner(matchingUser.getId());
+							asyncMap.put(matchedUser.getId(), matchedUser);
+							promise.complete(matchedUser.getId());
 						}
 					});
 				}
@@ -179,16 +161,15 @@ public class HttpService extends AbstractVerticle {
 		return sd.getAsyncMap("ws_token_map");
 	}
 
-	private void closeConnection(ServerWebSocket webSocket) {
-		logger.info("WebSocket closed");
-		String token = socketUserMap.get(webSocket);
+	private void closeConnection(String userId) {
+		logger.info("WebSocket closed userId[{}]",userId);
 		Future<AsyncMap<String, MsgUser>> mapFuture = getOnlineUser();
-		mapFuture.onSuccess(asyncMap-> asyncMap.get(token, h->{
+		mapFuture.onSuccess(asyncMap-> asyncMap.get(userId, h->{
 			if (h.succeeded()) {
 				MsgUser user = h.result();
 				logger.debug("远程连接关闭，token为：" + user);
 				//删除Map中token和Websocket的对应关系
-				asyncMap.remove(token, rem->{
+				asyncMap.remove(userId, rem->{
 					if (rem.succeeded()){
 						logger.debug("删除Map中token和Websocket的对应关系");
 					} else {
@@ -209,28 +190,23 @@ public class HttpService extends AbstractVerticle {
 	}
 
 
-	public MessageConsumer<Buffer> eventBusConsumer(ServerWebSocket webSocket, String token) {
+	public MessageConsumer<Buffer> eventBusConsumer(ServerWebSocket webSocket, String userId) {
 		//注册消费者
-		MessageConsumer<Buffer> consumer = vertx.eventBus().consumer(token);
+		MessageConsumer<Buffer> consumer = vertx.eventBus().consumer(userId);
 		consumer.handler(msg->{
 			//接收到消息
 			MsgMessage message = JSON.parseObject(msg.body().getBytes(), MsgMessage.class);
 			String type = message.getType();
 			if (MsgTypeEnum.close.code().equals(type)) {
 				//连接断开
-				msgCloseHandler(consumer, webSocket);
+				MsgMessage tokenMsg = new MsgMessage(MsgTypeEnum.close.code());
+				webSocket.writeTextMessage(JSON.toJSONString(tokenMsg));
+				updateUserState(userId, UserStateEnum.idle);
 			} else {
 				webSocket.writeTextMessage(JSON.toJSONString(message));
 			}
 		});
 		return consumer;
-	}
-
-	private void msgCloseHandler(MessageConsumer<?> consumer,  ServerWebSocket webSocket) {
-		MsgMessage tokenMsg = new MsgMessage(MsgTypeEnum.close.code());
-		webSocket.writeTextMessage(JSON.toJSONString(tokenMsg));
-		updateUserState(webSocket, UserStateEnum.idle);
-		consumer.unregister();
 	}
 
 
