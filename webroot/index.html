@@ -4,8 +4,10 @@
   <title></title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <!-- 新 Bootstrap 核心 CSS 文件 -->
-  <link rel="stylesheet" href="//cdn.bootcss.com/bootstrap/3.3.5/css/bootstrap.min.css">
-  <script src="//cdn.bootcss.com/jquery/1.11.3/jquery.min.js"></script>
+<!--  <link rel="stylesheet" href="//cdn.bootcss.com/bootstrap/3.3.5/css/bootstrap.min.css">-->
+<!--  <script src="//cdn.bootcss.com/jquery/1.11.3/jquery.min.js"></script>-->
+  <link href="http://libs.baidu.com/bootstrap/3.0.3/css/bootstrap.min.css" rel="stylesheet">
+  <script src="http://libs.baidu.com/jquery/2.0.0/jquery.min.js"></script>
   <!--        <script src="//cdn.bootcss.com/bootstrap/3.3.5/js/bootstrap.min.js"></script>-->
   <style type="text/css">
     .right {
@@ -15,8 +17,8 @@
 </head>
 <body>
 <div class="container">
-  <div>欢迎加入随机聊天，点击配对开始吧！</div>
-  <div class="list-group" id="divShow">
+  <div>欢迎加入随机聊天，点击匹配开始吧！</div>
+  <div class="list-group" id="divShow" style="height:300px;overflow:auto;background:#EEEEEE;">
     <!--<div class="list-group-item list-group-item-success">1111</div>
 	<div class="list-group-item list-group-item-info">1111</div>
 	<div class="list-group-item list-group-item-warning">1111</div>
@@ -36,7 +38,7 @@
                  required
                  style="width: 100%; "></textarea>
     <button class="btn btn-default" id="btnSend" style="margin-top:15px">发 送</button>
-    <button class="btn btn-default" id="btnMatch" style="margin-top:15px">配 对</button>
+    <button class="btn btn-default" id="btnMatch" style="margin-top:15px">匹 配</button>
     <button class="btn btn-default" id="btnLeave" style="margin-top:15px">离 开</button>
   </div>
 </div>
@@ -69,6 +71,8 @@
     } else {
       $("#" + id).append(hl);
     }
+    var divShow = document.getElementById("divShow");
+    divShow.scrollTop=divShow.scrollHeight;
   }
 
   $(function () {
@@ -108,11 +112,14 @@
         }else if(msg.type === "matched") {
           state="matched";
           partner=msg.content;
-          showMsg("divShow", tl.paperDiv("配对成功，打个招呼吧"), true);
+          showMsg("divShow", tl.paperDiv("匹配成功，打个招呼吧"), true);
+        }else if(msg.type === "matchTimeout") {
+          state="idle";
+          showMsg("divShow", tl.paperDiv("匹配超时，请稍后再试吧。。。"), true);
         }else if(msg.type === "leave") {
           state="idle";
           partner="";
-          showMsg("divShow", tl.paperDiv("对方已离开，重新配对吧。。。"), true);
+          showMsg("divShow", tl.paperDiv("对方已离开，重新匹配吧。。。"), true);
         }
 
       }
@@ -132,7 +139,7 @@
       var tUserName = $.trim($("#txtUserName").val());
       tUserName = tUserName.length <= 0 ? "匿名" : tUserName;
       if(state !== "matched") {
-        alert("请先配对!");
+        alert("请先匹配!");
         return;
       }
       if(tContent.length <= 0 || $.trim(tContent).length <= 0) {
@@ -151,18 +158,18 @@
     });
     $("#btnMatch").on("click", function () {
       if(state === "matching") {
-        alert("配对中，请稍等!");
+        alert("匹配中，请稍等!");
         return;
       }
       if(state === "matched") {
-        alert("聊天中，如想重新配对，请点击离开按钮!");
+        alert("聊天中，如想重新匹配，请点击离开按钮!");
         return;
       }
       state = "matching";
       var request = tl.formart('{"type": "{0}", "userId": "{1}" }', ["match", userId]);
       console.log("send msg：", request);
       ws.send(request);
-      showMsg("divShow", tl.paperDiv("配对中..."), true);
+      showMsg("divShow", tl.paperDiv("匹配中..."), true);
     });
     $("#btnLeave").on("click", function () {
       if(state !== "matched") {
@@ -173,7 +180,7 @@
       var request = tl.formart('{"type": "{0}", "userId": "{1}","receiver": "{2}" }', ["leave", userId, partner]);
       console.log("send msg：", request);
       ws.send(request);
-      showMsg("divShow", tl.paperDiv("已离开，重新配对吧..."), true);
+      showMsg("divShow", tl.paperDiv("已离开，重新匹配吧..."), true);
     });
     $("#txtContent").on("keydown", function (event) {
       if(event.keyCode === 13) {

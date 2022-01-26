@@ -72,7 +72,7 @@ public class HttpService extends AbstractVerticle {
 			MsgTypeEnum msgTypeEnum = MsgTypeEnum.valueOf(msg.getType());
 			switch(msgTypeEnum) {
 				case match:
-					Promise<String> matchUser = matchUser(userId);
+					Promise<String> matchUser = matchUser(userId,webSocket);
 					matchUser.future().onSuccess(token -> {
 						MsgMessage matchedMsg = new MsgMessage(MsgTypeEnum.matched.code());
 						matchedMsg.setContent(token);
@@ -97,20 +97,30 @@ public class HttpService extends AbstractVerticle {
 		});
 		// WebSocket异常处理器
 		webSocket.exceptionHandler(e->{
-			closeConnection(userId);
-			consumer.unregister();
+//			closeConnection(userId);
+//			consumer.unregister();
 			logger.error("WebSocket服务异常", e);
 		});
 	}
 
-	private Promise<String> matchUser(String userToken) {
+	private Promise<String> matchUser(String userId,ServerWebSocket webSocket) {
 		Promise<String> promise = Promise.promise();
-		updateUserState(userToken, UserStateEnum.matching);
-		vertx.setPeriodic(1000, id -> {
-			Promise<String> matchedUser = doMatchUser(userToken);
-			matchedUser.future().onSuccess(t->{
+		updateUserState(userId, UserStateEnum.matching);
+		long timer = vertx.setPeriodic(1000, id -> {
+			Promise<String> matchedUser = doMatchUser(userId, id);
+			matchedUser.future().onSuccess(t -> {
 				promise.complete(t);
 				vertx.cancelTimer(id);
+			});
+		});
+		vertx.setPeriodic(60000, id -> {
+			vertx.cancelTimer(id);
+			vertx.cancelTimer(timer);
+			getUser(userId).future().onSuccess(u -> {
+				if(u != null && UserStateEnum.matching.code().equals(u.getState()) && !webSocket.isClosed()) {
+					MsgMessage matchedMsg = new MsgMessage(MsgTypeEnum.matchTimeout.code());
+					webSocket.writeTextMessage(JSON.toJSONString(matchedMsg));
+				}
 			});
 		});
 		return promise;
@@ -135,38 +145,61 @@ public class HttpService extends AbstractVerticle {
 		}));
 		return promise;
 	}
+	private Promise<MsgUser> getUser(String userId) {
+		Promise<MsgUser> promise = Promise.promise();
+		Future<AsyncMap<String, MsgUser>> onlineUser = getOnlineUser();
+		onlineUser.onSuccess(a -> a.get(userId).onSuccess(promise::complete));
+		return promise;
+	}
+
+	private Promise<MsgUser> removeUser(String userId) {
+		Promise<MsgUser> promise = Promise.promise();
+		Future<AsyncMap<String, MsgUser>> onlineUser = getOnlineUser();
+		onlineUser.onSuccess(a -> a.get(userId).onSuccess(u -> {
+			a.remove(userId);
+			promise.complete(u);
+		}));
+		return promise;
+	}
 
 	private boolean validMatch(MsgUser u,String token) {
 		return !u.getId().equals(token) && UserStateEnum.matching.code().equals(u.getState());
 	}
 
-	private Promise<String> doMatchUser(String token) {
+	private Promise<String> doMatchUser(String token,long id) {
 		Promise<String> promise = Promise.promise();
 		Future<AsyncMap<String, MsgUser>> onlineUser = getOnlineUser();
 		onlineUser.onSuccess(asyncMap-> {
 			asyncMap.values().onSuccess(event -> {
-				logger.info("online user{}", JSON.toJSONString(event));
+				long pairedNum = event.stream().filter(a -> UserStateEnum.matched.code().equals(a.getState())).count();
+				logger.info("online user size [{}]，pair size [{}]", event.size(),pairedNum);
 			});
 			//检查自己有没有被别人匹配
 			asyncMap.get(token).onSuccess(matchingUser->{
-				if(UserStateEnum.matched.code().equals(matchingUser.getState())) {
-					promise.complete(matchingUser.getPartner());
+				if(matchingUser == null) {
+					vertx.cancelTimer(id);
+					promise.complete();
 				}else {
-					asyncMap.values().onSuccess(list -> {
-						MsgUser matchedUser = list.stream().filter(a -> validMatch(a, token)).findAny().orElse(null);
-						if(matchedUser == null) {
-							promise.fail("无配对中用户");
-						}else {
-							matchingUser.setState(UserStateEnum.matched.code());
-							matchingUser.setPartner(matchedUser.getId());
-							asyncMap.put(matchingUser.getId(), matchingUser);
-							matchedUser.setState(UserStateEnum.matched.code());
-							matchedUser.setPartner(matchingUser.getId());
-							asyncMap.put(matchedUser.getId(), matchedUser);
-							promise.complete(matchedUser.getId());
-						}
-					});
+					if(UserStateEnum.matched.code().equals(matchingUser.getState())) {
+						promise.complete(matchingUser.getPartner());
+					}else {
+						asyncMap.values().onSuccess(list -> {
+							MsgUser matchedUser = list.stream().filter(a -> validMatch(a, token)).findAny().orElse(null);
+							if(matchedUser == null) {
+								promise.fail("无配对中用户");
+							}else {
+								matchingUser.setState(UserStateEnum.matched.code());
+								matchingUser.setPartner(matchedUser.getId());
+								asyncMap.put(matchingUser.getId(), matchingUser);
+								matchedUser.setState(UserStateEnum.matched.code());
+								matchedUser.setPartner(matchingUser.getId());
+								asyncMap.put(matchedUser.getId(), matchedUser);
+								promise.complete(matchedUser.getId());
+							}
+						});
+					}
 				}
+
 			});
 		}).onFailure(promise::fail);
 		return promise;
@@ -192,29 +225,12 @@ public class HttpService extends AbstractVerticle {
 
 	private void closeConnection(String userId) {
 		logger.info("WebSocket closed userId[{}]",userId);
-		Future<AsyncMap<String, MsgUser>> mapFuture = getOnlineUser();
-		mapFuture.onSuccess(asyncMap-> asyncMap.get(userId, h->{
-			if (h.succeeded()) {
-				MsgUser user = h.result();
-				logger.debug("远程连接关闭，token为：" + user);
-				//删除Map中token和Websocket的对应关系
-				asyncMap.remove(userId, rem->{
-					if (rem.succeeded()){
-						logger.debug("删除Map中token和Websocket的对应关系");
-					} else {
-						logger.error("关闭websocket连接异常", rem.cause());
-					}
-				});
-				//创建一个关闭连接的消息
+		removeUser(userId).future().onSuccess(user -> {
+			//创建一个关闭连接的消息
+			if(UserStateEnum.matched.code().equals(user.getState())) {
 				MsgMessage message = new MsgMessage(MsgTypeEnum.leave.code());
-				if(UserStateEnum.matched.code().equals(user.getState())) {
-					vertx.eventBus().send(user.getPartner(), Buffer.buffer(JSON.toJSONBytes(message)));
-				}
-			} else {
-				logger.error("关闭websocket连接异常", h.cause());
+				vertx.eventBus().send(user.getPartner(), Buffer.buffer(JSON.toJSONBytes(message)));
 			}
-		})).onFailure(e->{
-			logger.error("关闭websocket连接异常", e);
 		});
 	}
 
@@ -321,8 +337,8 @@ public class HttpService extends AbstractVerticle {
 		});
 		// WebSocket异常处理器
 		webSocket.exceptionHandler(e->{
-			closeConnectionRoom(roomId,userId);
-			consumer.unregister();
+//			closeConnectionRoom(roomId,userId);
+//			consumer.unregister();
 			logger.error("WebSocket服务异常", e);
 		});
 	}

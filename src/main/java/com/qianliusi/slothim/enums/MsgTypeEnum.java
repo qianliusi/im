@@ -7,6 +7,7 @@ public enum MsgTypeEnum implements EnumService<String> {
     token("token", "token消息"),
     match("match", "match消息"),
     matched("matched", "matched消息"),
+    matchTimeout("matchTimeout", "matchTimeout消息"),
     chat("chat", "chat消息"),
     join("join", "join消息"),
     leave("leave", "leave消息"),

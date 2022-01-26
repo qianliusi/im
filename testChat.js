@@ -1,6 +1,6 @@
 var cwd = process.cwd();
 var WebSocketClient = require('websocket').client;
-var size = 10000;
+var size = 4400;
 var authInterval = 10;
 var index = 0;
 setInterval(function () {
@@ -20,12 +20,12 @@ init = function (uid, cid) {
 	});
 	client.on('connect', function (connection) {
 		console.log(index + ' Connected');
+		connection.send('{"type": "match" }')
 		connection.on('error', function (error) {
 			console.log("Connection Error: " + error.toString());
 		});
 		connection.on('close', function (error) {
 			console.log(error + ';  Connection Closed');            //client.close();
-			reconnect();
 		});
 		connection.on('message', function (message) {
 			console.log("message: " + JSON.stringify(message));
