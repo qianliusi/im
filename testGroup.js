@@ -1,8 +1,7 @@
 var cwd = process.cwd();
 var WebSocketClient = require('websocket').client;
-var size = 1000;
-var host = 'example.com:80';
-var port = 443;
+var size = 2000;
+var address = 'localhost:38888';
 var authInterval = 10;
 var index = 0;
 setInterval(function () {
@@ -16,7 +15,7 @@ setInterval(function () {
 console.log('begin...');
 init = function (uid, cid) {
 	var client = new WebSocketClient();
-	client.connect('ws://localhost:8888/room/shanghai', "", "http://localhost:8888");
+	client.connect('ws://'+address+'/room/shanghai', "", "http://"+address);
 	client.on('connectFailed', function (error) {
 		console.log('Connect Error: ' + error.toString());
 	});
@@ -27,7 +26,6 @@ init = function (uid, cid) {
 		});
 		connection.on('close', function (error) {
 			console.log(error + ';  Connection Closed');            //client.close();
-			reconnect();
 		});
 		connection.on('message', function (message) {
 			console.log("message: " + JSON.stringify(message));

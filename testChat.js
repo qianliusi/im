@@ -1,8 +1,9 @@
 var cwd = process.cwd();
 var WebSocketClient = require('websocket').client;
-var size = 4400;
+var size = 400;
 var authInterval = 10;
 var index = 0;
+var address='localhost:38888';
 setInterval(function () {
 	if(index < size) {
 		uid = index;
@@ -14,7 +15,7 @@ setInterval(function () {
 console.log('begin...');
 init = function (uid, cid) {
 	var client = new WebSocketClient();
-	client.connect('ws://localhost:8888/ws', "", "http://localhost:8888");
+	client.connect('ws://'+address+'/ws', "", "http://"+address);
 	client.on('connectFailed', function (error) {
 		console.log('Connect Error: ' + error.toString());
 	});
