@@ -17,7 +17,7 @@ public class FirstInstance {
       if (ar.succeeded()) {
         logger.info("First instance has been started");
         Vertx vertx = ar.result();
-        JsonObject conf = new JsonObject().put("port", 8081);
+        JsonObject conf = new JsonObject().put("port", 38888);
         vertx.deployVerticle(HttpService.class.getName(),new DeploymentOptions().setConfig(conf));
       } else {
         logger.error("Could not start", ar.cause());

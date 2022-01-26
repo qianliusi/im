@@ -18,7 +18,7 @@ public class SecondInstance {
       if (ar.succeeded()) {
         logger.info("Second instance has been started");
         Vertx vertx = ar.result();
-        JsonObject conf = new JsonObject().put("port", 8082);
+        JsonObject conf = new JsonObject().put("port", 38889);
         vertx.deployVerticle(HttpService.class.getName(), new DeploymentOptions().setConfig(conf));
       } else {
         logger.error("Could not start", ar.cause());

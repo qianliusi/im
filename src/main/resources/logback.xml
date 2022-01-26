@@ -1,7 +1,5 @@
 <configuration>
   <shutdownHook class="ch.qos.logback.core.hook.DelayingShutdownHook"/>
-  <springProperty scop="context" name="fileBasePath" source="logback.appender.file.path" defaultValue="/opt/logs"/>
-  <springProperty scop="context" name="applicationName" source="spring.application.name" defaultValue=""/>
   <appender name="console" class="ch.qos.logback.core.ConsoleAppender">
     <encoder>
       <pattern>%red(%d{yyyy-MM-dd HH:mm:ss.SSS}) [%X{traceId}] %highlight(%-5level) %thread %class:%line %cyan(%msg%n)</pattern>
@@ -10,9 +8,9 @@
   </appender>
 
   <appender name="file" class="ch.qos.logback.core.rolling.RollingFileAppender">
-    <file>${fileBasePath}/${applicationName}/out.log</file>
+    <file>logs/out.log</file>
     <triggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-      <fileNamePattern>${fileBasePath}/%d{yyyy-MM-dd}/%d{yyyy-MM-dd}-%i.log</fileNamePattern>
+      <fileNamePattern>logs/%d{yyyy-MM-dd}/%d{yyyy-MM-dd}-%i.log</fileNamePattern>
       <maxFileSize>100MB</maxFileSize>
       <maxHistory>30</maxHistory>
     </triggeringPolicy>

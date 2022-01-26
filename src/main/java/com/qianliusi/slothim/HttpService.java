@@ -34,7 +34,7 @@ public class HttpService extends AbstractVerticle {
 		router.route("/static/*").handler(StaticHandler.create());
 		router.get("/").handler(ctx -> ctx.reroute("/static/index.html"));
 		router.get("/room").handler(ctx -> ctx.reroute("/static/room.html"));
-		server.requestHandler(router).webSocketHandler(this::webSocketHandler).listen(config().getInteger("port", 8888));
+		server.requestHandler(router).webSocketHandler(this::webSocketHandler).listen(config().getInteger("port", 38888));
 	}
 
 	public void webSocketHandler(ServerWebSocket webSocket) {
@@ -140,8 +140,7 @@ public class HttpService extends AbstractVerticle {
 		Promise<Integer> promise = Promise.promise();
 		Future<AsyncMap<String, MsgUser>> onlineUser = getOnlineUser();
 		onlineUser.onSuccess(a -> a.put(userId, new MsgUser(userId, UserStateEnum.idle.code()), event -> {
-			int onlineUserNum = a.keys().result().size();
-			promise.complete(onlineUserNum);
+			a.keys().onSuccess(num -> promise.complete(num.size()));
 		}));
 		return promise;
 	}
