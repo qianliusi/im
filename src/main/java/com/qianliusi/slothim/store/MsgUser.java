@@ -8,7 +8,9 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.core.shareddata.Shareable;
 import io.vertx.core.shareddata.impl.ClusterSerializable;
 
-public class MsgUser implements ClusterSerializable, Shareable {
+import java.io.Serializable;
+
+public class MsgUser implements ClusterSerializable, Shareable, Serializable {
 
 	private String id;
 	private String state;//idle,matching,matched
