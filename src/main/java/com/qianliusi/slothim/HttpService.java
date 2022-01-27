@@ -13,6 +13,7 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.ServerWebSocket;
+import io.vertx.core.json.JsonObject;
 import io.vertx.core.shareddata.AsyncMap;
 import io.vertx.core.shareddata.SharedData;
 import io.vertx.ext.web.Router;
@@ -74,9 +75,11 @@ public class HttpService extends AbstractVerticle {
 				case match:
 					Promise<String> matchUser = matchUser(userId,webSocket);
 					matchUser.future().onSuccess(token -> {
-						MsgMessage matchedMsg = new MsgMessage(MsgTypeEnum.matched.code());
-						matchedMsg.setContent(token);
-						webSocket.writeTextMessage(JSON.toJSONString(matchedMsg));
+						if(token != null) {
+							MsgMessage matchedMsg = new MsgMessage(MsgTypeEnum.matched.code());
+							matchedMsg.setContent(token);
+							webSocket.writeTextMessage(JSON.toJSONString(matchedMsg));
+						}
 					});
 					break;
 				case chat:
@@ -102,26 +105,28 @@ public class HttpService extends AbstractVerticle {
 			logger.error("WebSocket服务异常", e);
 		});
 	}
-
 	private Promise<String> matchUser(String userId,ServerWebSocket webSocket) {
 		Promise<String> promise = Promise.promise();
 		updateUserState(userId, UserStateEnum.matching);
-		long timer = vertx.setPeriodic(1000, id -> {
-			Promise<String> matchedUser = doMatchUser(userId, id);
-			matchedUser.future().onSuccess(t -> {
-				promise.complete(t);
-				vertx.cancelTimer(id);
-			});
-		});
-		vertx.setPeriodic(60000, id -> {
-			vertx.cancelTimer(id);
-			vertx.cancelTimer(timer);
-			getUser(userId).future().onSuccess(u -> {
-				if(u != null && UserStateEnum.matching.code().equals(u.getState()) && !webSocket.isClosed()) {
-					MsgMessage matchedMsg = new MsgMessage(MsgTypeEnum.matchTimeout.code());
-					webSocket.writeTextMessage(JSON.toJSONString(matchedMsg));
+		vertx.eventBus().request("matchUser", userId, reply -> {
+			if(reply.succeeded()) {
+				JsonObject replyJson = (JsonObject) reply.result().body();
+				String state = replyJson.getString("state");
+				String result = replyJson.getString("result");
+				String matchedUserId = null;
+				if("success".equals(state)) {
+					matchedUserId = result;
 				}
-			});
+				promise.complete(matchedUserId);
+				if("fail".equals(state)) {
+					getUser(userId).future().onSuccess(u -> {
+						if(u != null && UserStateEnum.matching.code().equals(u.getState()) && !webSocket.isClosed()) {
+							MsgMessage matchedMsg = new MsgMessage(MsgTypeEnum.matchTimeout.code(),result);
+							webSocket.writeTextMessage(JSON.toJSONString(matchedMsg));
+						}
+					});
+				}
+			}
 		});
 		return promise;
 	}
@@ -140,7 +145,12 @@ public class HttpService extends AbstractVerticle {
 		Promise<Integer> promise = Promise.promise();
 		Future<AsyncMap<String, MsgUser>> onlineUser = getOnlineUser();
 		onlineUser.onSuccess(a -> a.put(userId, new MsgUser(userId, UserStateEnum.idle.code()), event -> {
-			a.keys().onSuccess(num -> promise.complete(num.size()));
+			a.values().onSuccess(num -> {
+				promise.complete(num.size());
+				//打印在线人数
+				long pairedNum = num.stream().filter(u -> UserStateEnum.matched.code().equals(u.getState())).count();
+				logger.info("online user size [{}]，pair size [{}]", num.size(), pairedNum);
+			});
 		}));
 		return promise;
 	}
@@ -161,50 +171,7 @@ public class HttpService extends AbstractVerticle {
 		return promise;
 	}
 
-	private boolean validMatch(MsgUser u,String token) {
-		return !u.getId().equals(token) && UserStateEnum.matching.code().equals(u.getState());
-	}
-
-	private Promise<String> doMatchUser(String token,long id) {
-		Promise<String> promise = Promise.promise();
-		Future<AsyncMap<String, MsgUser>> onlineUser = getOnlineUser();
-		onlineUser.onSuccess(asyncMap-> {
-			asyncMap.values().onSuccess(event -> {
-				long pairedNum = event.stream().filter(a -> UserStateEnum.matched.code().equals(a.getState())).count();
-				logger.info("online user size [{}]，pair size [{}]", event.size(),pairedNum);
-			});
-			//检查自己有没有被别人匹配
-			asyncMap.get(token).onSuccess(matchingUser->{
-				if(matchingUser == null) {
-					vertx.cancelTimer(id);
-					promise.complete();
-				}else {
-					if(UserStateEnum.matched.code().equals(matchingUser.getState())) {
-						promise.complete(matchingUser.getPartner());
-					}else {
-						asyncMap.values().onSuccess(list -> {
-							MsgUser matchedUser = list.stream().filter(a -> validMatch(a, token)).findAny().orElse(null);
-							if(matchedUser == null) {
-								promise.fail("无配对中用户");
-							}else {
-								matchingUser.setState(UserStateEnum.matched.code());
-								matchingUser.setPartner(matchedUser.getId());
-								asyncMap.put(matchingUser.getId(), matchingUser);
-								matchedUser.setState(UserStateEnum.matched.code());
-								matchedUser.setPartner(matchingUser.getId());
-								asyncMap.put(matchedUser.getId(), matchedUser);
-								promise.complete(matchedUser.getId());
-							}
-						});
-					}
-				}
-
-			});
-		}).onFailure(promise::fail);
-		return promise;
-	}
-
-	private Future<AsyncMap<String, MsgUser>> getOnlineUser(){
+	public Future<AsyncMap<String, MsgUser>> getOnlineUser(){
 		// 取Websocket和token之间的对应关系
 		SharedData sd = vertx.sharedData();
 		if (vertx.isClustered()) {

@@ -115,7 +115,7 @@
           showMsg("divShow", tl.paperDiv("匹配成功，打个招呼吧"), true);
         }else if(msg.type === "matchTimeout") {
           state="idle";
-          showMsg("divShow", tl.paperDiv("匹配超时，请稍后再试吧。。。"), true);
+          showMsg("divShow", tl.paperDiv("匹配超时，请稍后再试吧。。。"+ msg.content), true);
         }else if(msg.type === "leave") {
           state="idle";
           partner="";
